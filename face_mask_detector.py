@@ -90,11 +90,11 @@ def train_model():
     
     train_datagen = ImageDataGenerator(
         rescale=1.0/255,
-        rotation_range=60,  # Increased for better generalization
-        width_shift_range=0.3,  # Increased
-        height_shift_range=0.3,  # Increased
-        shear_range=0.3,  # Increased
-        zoom_range=0.3,  # Increased
+        rotation_range=60,
+        width_shift_range=0.3,
+        height_shift_range=0.3,
+        shear_range=0.3,
+        zoom_range=0.3,
         horizontal_flip=True,
         fill_mode='nearest',
         brightness_range=[0.8, 1.2]  # Added to handle lighting variations
@@ -202,7 +202,7 @@ while True:
         result = model.predict(reshaped, verbose=0)
         
         score = result[0, 0]
-        print(f"Prediction score: {score:.4f}")  # Debug: Print raw prediction score
+        print(f"Prediction score: {score:.4f}")
         label = 1 if score >= threshold else 0  # Use custom threshold
         cv2.rectangle(im, (x*size, y*size), ((x+w)*size, (y+h)*size), color_dict[label], 2)
         cv2.rectangle(im, (x*size, (y*size)-40), ((x+w)*size, y*size), color_dict[label], -1)
