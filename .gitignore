@@ -1,0 +1,5 @@
+.venv/Lib/*
+.qodo
+observations
+models/*
+plot.png
