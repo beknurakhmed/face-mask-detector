@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Dropout
 from tensorflow.keras.callbacks import ModelCheckpoint
+from datetime import datetime
 
 # Define dataset paths
 DATASET_BASE = "observations/experiments/dest_folder"
@@ -14,11 +15,15 @@ TRAIN_DIR = os.path.join(DATASET_BASE, "train")
 VAL_DIR = os.path.join(DATASET_BASE, "val")
 TEST_DIR = os.path.join(DATASET_BASE, "test")
 
+# Create output directory for saving processed images/videos
+OUTPUT_DIR = "outputs"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
 # Print dataset base path for debugging
 print(f"Dataset base path: {os.path.abspath(DATASET_BASE)}")
 
-# Check if directories exist and print dataset statistics
 def check_and_print_stats(directory, name):
+    """Check if directory exists and print image counts for each class."""
     with_mask_dir = os.path.join(directory, "with_mask")
     without_mask_dir = os.path.join(directory, "without_mask")
     
@@ -97,7 +102,7 @@ def train_model():
         zoom_range=0.3,
         horizontal_flip=True,
         fill_mode='nearest',
-        brightness_range=[0.8, 1.2]  # Added to handle lighting variations
+        brightness_range=[0.8, 1.2]
     )
 
     train_generator = train_datagen.flow_from_directory(
@@ -150,11 +155,8 @@ def plot():
     plt.plot(epochs_range, val_loss, label='Validation Loss')
     plt.legend(loc='upper right')
     plt.title('Training and Validation Loss')
-    # save plt 
     plt.savefig('plot.png')
     plt.show()
-    
-    
 
 # Train the model if no model was loaded, then plot results
 if not model_files:
@@ -172,25 +174,16 @@ test_generator = test_datagen.flow_from_directory(
 test_loss, test_accuracy = model.evaluate(test_generator)
 print(f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.4f}")
 
-# Live face mask detection using webcam
+# Face detection setup
 face_clsfr = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 labels_dict = {0: 'without mask', 1: 'with mask'}
 color_dict = {0: (0, 0, 255), 1: (0, 255, 0)}
 size = 4
-threshold = 0.7  # Adjust threshold for "with mask" prediction
+threshold = 0.7
 
-webcam = cv2.VideoCapture(0)
-if not webcam.isOpened():
-    print("Error: Could not open webcam.")
-    exit()
-
-while True:
-    rval, im = webcam.read()
-    if not rval:
-        print("Error: Failed to capture image from webcam.")
-        break
-
-    im = cv2.flip(im, 1, 1)  # Flip to act as a mirror
+def process_frame(frame, save_path=None):
+    """Process a single frame for face mask detection, optionally saving the output."""
+    im = cv2.flip(frame, 1, 1)  # Flip to act as a mirror
     mini = cv2.resize(im, (im.shape[1] // size, im.shape[0] // size))
     faces = face_clsfr.detectMultiScale(mini, scaleFactor=1.1, minNeighbors=5)
 
@@ -203,16 +196,151 @@ while True:
         
         score = result[0, 0]
         print(f"Prediction score: {score:.4f}")
-        label = 1 if score >= threshold else 0  # Use custom threshold
+        label = 1 if score >= threshold else 0
         cv2.rectangle(im, (x*size, y*size), ((x+w)*size, (y+h)*size), color_dict[label], 2)
         cv2.rectangle(im, (x*size, (y*size)-40), ((x+w)*size, y*size), color_dict[label], -1)
         cv2.putText(im, labels_dict[label], (x*size + 10, (y*size)-10),
                     cv2.FONT_HERSHEY_DUPLEX, 0.8, (255, 255, 255), 2)
+    
+    if save_path:
+        cv2.imwrite(save_path, im)
+    
+    return im
 
+def process_webcam(save_output=False):
+    """Process live webcam feed, optionally saving a snapshot."""
+    webcam = cv2.VideoCapture(0)
+    if not webcam.isOpened():
+        print("Error: Could not open webcam.")
+        return
+
+    save_path = None
+    if save_output:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_path = os.path.join(OUTPUT_DIR, f"webcam_snapshot_{timestamp}.jpg")
+
+    while True:
+        rval, im = webcam.read()
+        if not rval:
+            print("Error: Failed to capture image from webcam.")
+            break
+
+        im = process_frame(im, save_path if save_output else None)
+        save_output = False  # Save only the first frame
+        cv2.imshow('Mask Detection', im)
+        key = cv2.waitKey(10)
+        if key == 27:  # ESC key to exit
+            break
+
+    webcam.release()
+    cv2.destroyAllWindows()
+
+def process_image(image_path, save_output=False):
+    """Process a single image file, optionally saving the output."""
+    if not os.path.exists(image_path):
+        print(f"Error: Image file not found at {image_path}")
+        return
+
+    im = cv2.imread(image_path)
+    if im is None:
+        print(f"Error: Failed to load image at {image_path}")
+        return
+
+    save_path = None
+    if save_output:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"processed_image_{timestamp}.jpg"
+        save_path = os.path.join(OUTPUT_DIR, filename)
+
+    im = process_frame(im, save_path)
     cv2.imshow('Mask Detection', im)
-    key = cv2.waitKey(10)
-    if key == 27:  # ESC key to exit
-        break
+    cv2.waitKey(0)  # Wait for any key press to close
+    cv2.destroyAllWindows()
 
-webcam.release()
-cv2.destroyAllWindows()
+def process_video(video_path, save_output=False):
+    """Process a video file, optionally saving the output."""
+    if not os.path.exists(video_path):
+        print(f"Error: Video file not found at {video_path}")
+        return
+
+    video = cv2.VideoCapture(video_path)
+    if not video.isOpened():
+        print(f"Error: Failed to open video at {video_path}")
+        return
+
+    save_path = None
+    video_writer = None
+    if save_output:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_path = os.path.join(OUTPUT_DIR, f"processed_video_{timestamp}.mp4")
+        fps = video.get(cv2.CAP_PROP_FPS)
+        width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        video_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+
+    while True:
+        rval, im = video.read()
+        if not rval:
+            break
+
+        im = process_frame(im)
+        if video_writer:
+            video_writer.write(im)
+        cv2.imshow('Mask Detection', im)
+        key = cv2.waitKey(30)  # 30ms delay for ~33fps
+        if key == 27:  # ESC key to exit
+            break
+
+    video.release()
+    if video_writer:
+        video_writer.release()
+    cv2.destroyAllWindows()
+
+def set_threshold():
+    """Prompt user to set a new prediction threshold."""
+    global threshold
+    try:
+        new_threshold = float(input("Enter new prediction threshold (0.0 to 1.0): "))
+        if 0.0 <= new_threshold <= 1.0:
+            threshold = new_threshold
+            print(f"Threshold updated to {threshold}")
+        else:
+            print("Error: Threshold must be between 0.0 and 1.0")
+    except ValueError:
+        print("Error: Invalid input. Please enter a number.")
+
+def menu():
+    """Display menu and handle user input for face mask detection."""
+    while True:
+        print("\n=== Face Mask Detection Menu ===")
+        print("1. Webcam Feed")
+        print("2. Image File")
+        print("3. Video File")
+        print("4. Set Prediction Threshold")
+        print("5. Exit")
+        choice = input("Enter your choice (1-5): ")
+
+        save_output = False
+        if choice in ['1', '2', '3']:
+            save_choice = input("Save output? (y/n): ").lower()
+            save_output = save_choice == 'y'
+
+        if choice == '1':
+            process_webcam(save_output)
+        elif choice == '2':
+            image_path = input("Enter the path to the image file (e.g., image.jpg): ")
+            process_image(image_path, save_output)
+        elif choice == '3':
+            video_path = input("Enter the path to the video file (e.g., video.mp4): ")
+            process_video(video_path, save_output)
+        elif choice == '4':
+            set_threshold()
+        elif choice == '5':
+            print("Exiting...")
+            break
+        else:
+            print("Invalid choice. Please enter a number between 1 and 5.")
+
+# Run the menu
+if __name__ == "__main__":
+    menu()
