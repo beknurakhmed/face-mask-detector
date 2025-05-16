@@ -46,7 +46,7 @@ mkdir face-mask-detector
 cd face-mask-detector
 ```
 
-Place `face_mask_detector.py` and `requirements.txt` in this directory.
+Place `face_mask_detector.py`, `haarcascade_frontalface_default.xml` and `requirements.txt` in this directory.
 
 ### 2. Download the Dataset
 

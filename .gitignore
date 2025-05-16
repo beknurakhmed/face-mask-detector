@@ -1,6 +1,6 @@
-.venv/Lib/*
+.venv
 .qodo
 observations
-models/*
+models
 plot.png
-outputs/*
+outputs
